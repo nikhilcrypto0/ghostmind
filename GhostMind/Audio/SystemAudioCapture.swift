@@ -18,7 +18,7 @@ class SystemAudioCapture: NSObject {
             try? await stream?.stopCapture()
             stream = nil
             isCapturing = false
-            ClueyLog.write("System audio capture stopped")
+            GhostLog.write("System audio capture stopped")
         }
     }
 
@@ -26,7 +26,7 @@ class SystemAudioCapture: NSObject {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
             guard let display = content.displays.first else {
-                ClueyLog.write("System audio: no display found")
+                GhostLog.write("System audio: no display found")
                 return
             }
 
@@ -45,9 +45,9 @@ class SystemAudioCapture: NSObject {
             try stream?.addStreamOutput(self, type: .audio, sampleHandlerQueue: .global(qos: .userInitiated))
             try await stream?.startCapture()
             isCapturing = true
-            ClueyLog.write("System audio capture started ✓ (interviewer voice enabled)")
+            GhostLog.write("System audio capture started ✓ (interviewer voice enabled)")
         } catch {
-            ClueyLog.write("System audio capture failed: \(error.localizedDescription)")
+            GhostLog.write("System audio capture failed: \(error.localizedDescription)")
         }
     }
 }

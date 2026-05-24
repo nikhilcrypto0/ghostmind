@@ -110,11 +110,11 @@ class QuestionDetector {
     func fireIfQuestion(transcript: String, handler: @escaping (String, AssistMode) -> Void) {
         guard canFire() else { return }
         guard let result = analyze(transcript: transcript) else {
-            ClueyLog.write("QuestionDetector: no question pattern in \"\(transcript.suffix(60))\"")
+            GhostLog.write("QuestionDetector: no question pattern in \"\(transcript.suffix(60))\"")
             return
         }
         lastFireTime = Date()
-        ClueyLog.write("QuestionDetector: FIRED (commit) — type=\(result.type)")
+        GhostLog.write("QuestionDetector: FIRED (commit) — type=\(result.type)")
         handler(transcript, .assist(result.type))
     }
 
@@ -129,13 +129,13 @@ class QuestionDetector {
             guard !Task.isCancelled else { return }
             guard self.canFire() else { return }
 
-            ClueyLog.write("QuestionDetector: analyzing partial (\(transcript.count) chars): \"\(transcript.suffix(60))\"")
+            GhostLog.write("QuestionDetector: analyzing partial (\(transcript.count) chars): \"\(transcript.suffix(60))\"")
             if let result = self.analyze(transcript: transcript) {
                 self.lastFireTime = Date()
-                ClueyLog.write("QuestionDetector: FIRED (partial) — type=\(result.type)")
+                GhostLog.write("QuestionDetector: FIRED (partial) — type=\(result.type)")
                 DispatchQueue.main.async { onDetected(transcript, .assist(result.type)) }
             } else {
-                ClueyLog.write("QuestionDetector: no question detected")
+                GhostLog.write("QuestionDetector: no question detected")
             }
         }
     }

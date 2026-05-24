@@ -4,7 +4,7 @@ class AgentRouter {
     static let shared = AgentRouter()
 
     func handle(transcript: String, mode: AssistMode) {
-        ClueyLog.write("AgentRouter: mode=\(mode), transcript=\(transcript.suffix(60))")
+        GhostLog.write("AgentRouter: mode=\(mode), transcript=\(transcript.suffix(60))")
 
         NotificationCenter.default.post(name: .newAnswer, object: nil,
             userInfo: ["question": String(transcript.suffix(120))])

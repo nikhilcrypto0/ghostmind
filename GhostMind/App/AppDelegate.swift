@@ -24,7 +24,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - First-run setup
 
     private func checkFirstRunSetup() {
-        let hasAnthropicKey = keyFileHasContent("/.cluey_api_key")
+        let hasAnthropicKey = keyFileHasContent("/.ghostmind_api_key")
         let hasDeepgramKey  = keyFileHasContent("/.deepgram_api_key")
 
         if hasAnthropicKey && hasDeepgramKey {
@@ -46,14 +46,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Audio
 
     private func startAudio() {
-        ClueyLog.write("Starting transcription engine")
+        GhostLog.write("Starting transcription engine")
         NotificationCenter.default.post(name: .whisperLoading, object: nil)
         TranscriptionManager.shared.setup()
 
         NotificationCenter.default.addObserver(forName: .whisperReady, object: nil, queue: .main) { n in
             guard n.userInfo?["error"] == nil else { return }
             guard ContextManager.shared.captureSystemAudio else { return }
-            ClueyLog.write("Auto-starting system audio capture for interviewer voice")
+            GhostLog.write("Auto-starting system audio capture for interviewer voice")
             SystemAudioCapture.shared.start()
         }
     }
@@ -102,7 +102,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 launchAtLoginItem?.state = .on
             }
         } catch {
-            ClueyLog.write("Launch at login toggle failed: \(error.localizedDescription)")
+            GhostLog.write("Launch at login toggle failed: \(error.localizedDescription)")
         }
     }
 

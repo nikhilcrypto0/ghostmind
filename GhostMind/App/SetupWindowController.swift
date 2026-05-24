@@ -183,7 +183,7 @@ struct SetupView: View {
 
     private func loadExistingKeys() {
         let home = NSHomeDirectory()
-        if let k = try? String(contentsOfFile: home + "/.cluey_api_key", encoding: .utf8) {
+        if let k = try? String(contentsOfFile: home + "/.ghostmind_api_key", encoding: .utf8) {
             anthropicKey = k.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if let k = try? String(contentsOfFile: home + "/.deepgram_api_key", encoding: .utf8) {
@@ -201,7 +201,7 @@ struct SetupView: View {
 
         let home = NSHomeDirectory()
         do {
-            try ak.write(toFile: home + "/.cluey_api_key",    atomically: true, encoding: .utf8)
+            try ak.write(toFile: home + "/.ghostmind_api_key",    atomically: true, encoding: .utf8)
             try dk.write(toFile: home + "/.deepgram_api_key", atomically: true, encoding: .utf8)
             // Expose to GUI-launched processes immediately
             setenv("ANTHROPIC_API_KEY", ak, 1)

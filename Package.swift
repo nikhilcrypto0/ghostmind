@@ -2,21 +2,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClueyMac",
+    name: "GhostMind",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "ClueyMac", targets: ["ClueyMac"])
+        .executable(name: "GhostMind", targets: ["GhostMind"])
     ],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "2.2.0"),
     ],
     targets: [
         .executableTarget(
-            name: "ClueyMac",
+            name: "GhostMind",
             dependencies: [
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
             ],
-            path: "ClueyMac"
+            path: "GhostMind"
         )
     ]
 )

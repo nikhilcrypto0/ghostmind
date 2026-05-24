@@ -17,7 +17,7 @@ swift build -c release 2>&1 | grep -E "Build complete|error:|warning:" || true
 echo ""
 
 # Kill existing instance
-pkill -x ClueyMac 2>/dev/null || true
+pkill -x GhostMind 2>/dev/null || true
 sleep 0.3
 
 # Create app bundle structure
@@ -26,7 +26,7 @@ mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
 
 # Copy binary, Info.plist, icon
-cp .build/release/ClueyMac "$APP/Contents/MacOS/ClueyMac"
+cp .build/release/GhostMind "$APP/Contents/MacOS/GhostMind"
 cp Info.plist               "$APP/Contents/Info.plist"
 cp AppIcon.icns             "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null || true
 

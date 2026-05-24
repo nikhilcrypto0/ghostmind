@@ -9,7 +9,7 @@ class TranscriptionManager: NSObject {
     private var rollingTranscript = ""
     private var currentSegment = ""
     private let maxTranscriptLength = 8000
-    private let queue = DispatchQueue(label: "com.cluey.transcription", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "com.ghostmind.transcription", qos: .userInitiated)
 
     // Deepgram
     private var webSocketTask: URLSessionWebSocketTask?
@@ -34,15 +34,15 @@ class TranscriptionManager: NSObject {
         let engine = AVAudioEngine()
         let rate = Int(engine.inputNode.outputFormat(forBus: 0).sampleRate)
         sampleRate = rate > 8000 ? rate : 48000
-        ClueyLog.write("Input sample rate: \(sampleRate)Hz")
+        GhostLog.write("Input sample rate: \(sampleRate)Hz")
 
         if let key = loadDeepgramKey(), !key.isEmpty {
             deepgramKey = key
             usingDeepgram = true
-            ClueyLog.write("Deepgram Nova-2 selected")
+            GhostLog.write("Deepgram Nova-2 selected")
             requestMicAndConnectDeepgram()
         } else {
-            ClueyLog.write("No Deepgram key found — falling back to Apple Speech")
+            GhostLog.write("No Deepgram key found — falling back to Apple Speech")
             setupAppleSpeech()
         }
     }
@@ -92,7 +92,7 @@ class TranscriptionManager: NSObject {
             + "&channels=1"
 
         guard let url = URL(string: urlStr) else {
-            ClueyLog.write("Deepgram: bad URL")
+            GhostLog.write("Deepgram: bad URL")
             isConnecting = false
             return
         }
@@ -106,7 +106,7 @@ class TranscriptionManager: NSObject {
         webSocketTask?.resume()
         isConnecting = false
 
-        ClueyLog.write("Deepgram WebSocket opened")
+        GhostLog.write("Deepgram WebSocket opened")
         startKeepalive()
         receiveLoop()
     }
@@ -116,7 +116,7 @@ class TranscriptionManager: NSObject {
         // Deepgram closes idle connections after ~10s; send KeepAlive every 8s
         keepaliveTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
             self?.webSocketTask?.send(.string("{\"type\":\"KeepAlive\"}")) { err in
-                if let err { ClueyLog.write("Keepalive failed: \(err.localizedDescription)") }
+                if let err { GhostLog.write("Keepalive failed: \(err.localizedDescription)") }
             }
         }
     }
@@ -132,7 +132,7 @@ class TranscriptionManager: NSObject {
                 self.receiveLoop()
 
             case .failure(let err):
-                ClueyLog.write("Deepgram disconnected: \(err.localizedDescription) — reconnecting in 2s")
+                GhostLog.write("Deepgram disconnected: \(err.localizedDescription) — reconnecting in 2s")
                 self.keepaliveTimer?.invalidate()
                 self.keepaliveTimer = nil
                 self.webSocketTask = nil
@@ -155,7 +155,7 @@ class TranscriptionManager: NSObject {
 
         let speechFinal = obj["speech_final"] as? Bool ?? false
 
-        ClueyLog.write("Deepgram (\(speechFinal ? "final" : "partial")): \"\(text.suffix(60))\"")
+        GhostLog.write("Deepgram (\(speechFinal ? "final" : "partial")): \"\(text.suffix(60))\"")
 
         if speechFinal {
             commitSegment(text)
@@ -193,11 +193,11 @@ class TranscriptionManager: NSObject {
         } else if let ch = buffer.int16ChannelData?[0] {
             data = Data(bytes: ch, count: count * 2)
         } else {
-            ClueyLog.write("sendToDeepgram: unsupported buffer format")
+            GhostLog.write("sendToDeepgram: unsupported buffer format")
             return
         }
         webSocketTask?.send(.data(data)) { err in
-            if let err { ClueyLog.write("Deepgram send error: \(err.localizedDescription)") }
+            if let err { GhostLog.write("Deepgram send error: \(err.localizedDescription)") }
         }
     }
 
@@ -209,7 +209,7 @@ class TranscriptionManager: NSObject {
 
     func resetTranscript() {
         queue.async { self.rollingTranscript = "" }
-        ClueyLog.write("Transcript reset")
+        GhostLog.write("Transcript reset")
     }
 
     // MARK: - Segment management
@@ -224,7 +224,7 @@ class TranscriptionManager: NSObject {
     }
 
     private func commitSegment(_ text: String) {
-        ClueyLog.write("Commit: \"\(text)\"")
+        GhostLog.write("Commit: \"\(text)\"")
         rollingTranscript = String((rollingTranscript + " " + text)
             .trimmingCharacters(in: .whitespaces)
             .suffix(maxTranscriptLength))
@@ -241,7 +241,7 @@ class TranscriptionManager: NSObject {
 
     private func setupAppleSpeech() {
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
-            ClueyLog.write("Apple Speech auth: \(status.rawValue)")
+            GhostLog.write("Apple Speech auth: \(status.rawValue)")
             DispatchQueue.main.async {
                 if status == .authorized {
                     self?.isReady = true
@@ -303,7 +303,7 @@ class TranscriptionManager: NSObject {
                     self.isRestarting = false
                     DispatchQueue.main.async { self.startAppleRecognition() }
                 } else {
-                    ClueyLog.write("Apple Speech error \(err.code): \(err.localizedDescription)")
+                    GhostLog.write("Apple Speech error \(err.code): \(err.localizedDescription)")
                     self.isRestarting = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.startAppleRecognition() }
                 }
@@ -315,6 +315,6 @@ class TranscriptionManager: NSObject {
             self?.isRestarting = false
             self?.startAppleRecognition()
         }
-        ClueyLog.write("Apple Speech session started")
+        GhostLog.write("Apple Speech session started")
     }
 }

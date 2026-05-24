@@ -15,7 +15,7 @@ class AudioCaptureManager: NSObject {
         inputNode.removeTap(onBus: 0)
         let format = inputNode.outputFormat(forBus: 0)
 
-        ClueyLog.write("Audio format: \(format.sampleRate)Hz, channels: \(format.channelCount)")
+        GhostLog.write("Audio format: \(format.sampleRate)Hz, channels: \(format.channelCount)")
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.processBuffer(buffer)
@@ -24,9 +24,9 @@ class AudioCaptureManager: NSObject {
         do {
             try audioEngine.start()
             isRunning = true
-            ClueyLog.write("Audio engine started ✓")
+            GhostLog.write("Audio engine started ✓")
         } catch {
-            ClueyLog.write("Audio engine FAILED: \(error)")
+            GhostLog.write("Audio engine FAILED: \(error)")
         }
     }
 
@@ -34,7 +34,7 @@ class AudioCaptureManager: NSObject {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         isRunning = false
-        ClueyLog.write("Audio engine stopped")
+        GhostLog.write("Audio engine stopped")
     }
 
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {

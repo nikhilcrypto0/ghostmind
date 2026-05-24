@@ -1,7 +1,7 @@
 import Foundation
 
-enum ClueyLog {
-    static let path = (NSHomeDirectory() as NSString).appendingPathComponent("cluey-debug.log")
+enum GhostLog {
+    static let path = (NSHomeDirectory() as NSString).appendingPathComponent("ghostmind-debug.log")
 
     static func write(_ msg: String) {
         let line = "[\(Date())] \(msg)\n"

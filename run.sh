@@ -15,8 +15,8 @@ fi
 
 swift build -c release
 
-BINARY=".build/release/ClueyMac"
-ENTITLEMENTS="ClueyMac.entitlements"
+BINARY=".build/release/GhostMind"
+ENTITLEMENTS="GhostMind.entitlements"
 
 # Codesign with entitlements so macOS grants mic permission
 codesign --force --sign - --entitlements "$ENTITLEMENTS" "$BINARY"

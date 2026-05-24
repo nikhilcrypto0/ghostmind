@@ -6,7 +6,7 @@ class ClaudeClient {
     private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
     private lazy var apiKey: String = {
         if let key = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !key.isEmpty { return key }
-        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".cluey_api_key")
+        let path = (NSHomeDirectory() as NSString).appendingPathComponent(".ghostmind_api_key")
         return (try? String(contentsOfFile: path, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }()
 
@@ -22,7 +22,7 @@ class ClaudeClient {
         streamTask?.cancel()
 
         let key = apiKey
-        ClueyLog.write("ClaudeClient: mode=\(mode), key=\(key.isEmpty ? "MISSING" : String(key.prefix(8)) + "...")")
+        GhostLog.write("ClaudeClient: mode=\(mode), key=\(key.isEmpty ? "MISSING" : String(key.prefix(8)) + "...")")
 
         var urlRequest = URLRequest(url: apiURL)
         urlRequest.httpMethod = "POST"
@@ -44,7 +44,7 @@ class ClaudeClient {
                 let (bytes, response) = try await URLSession.shared.bytes(for: urlRequest)
 
                 if let http = response as? HTTPURLResponse {
-                    ClueyLog.write("ClaudeClient: HTTP \(http.statusCode)")
+                    GhostLog.write("ClaudeClient: HTTP \(http.statusCode)")
                     guard (200..<300).contains(http.statusCode) else {
                         let err = NSError(domain: "ClaudeClient", code: http.statusCode,
                                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) — check API key"])
@@ -74,7 +74,7 @@ class ClaudeClient {
                 }
             } catch {
                 if (error as NSError).code == NSURLErrorCancelled { return }
-                ClueyLog.write("ClaudeClient: error — \(error.localizedDescription)")
+                GhostLog.write("ClaudeClient: error — \(error.localizedDescription)")
                 DispatchQueue.main.async { onError(error) }
             }
         }

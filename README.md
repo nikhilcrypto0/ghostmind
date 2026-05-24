@@ -63,7 +63,7 @@ The installer:
 2. Creates `GhostMind.app` in `/Applications`
 3. Code-signs and launches the app
 
-On first launch, a setup window will ask for your API keys. They are saved locally to `~/.cluey_api_key` and `~/.deepgram_api_key` — never sent anywhere except directly to Anthropic and Deepgram.
+On first launch, a setup window will ask for your API keys. They are saved locally to `~/.ghostmind_api_key` and `~/.deepgram_api_key` — never sent anywhere except directly to Anthropic and Deepgram.
 
 ---
 
@@ -112,7 +112,7 @@ Both fields auto-save as you type.
 ## Architecture
 
 ```
-ClueyMac/
+GhostMind/
 ├── App/
 │   ├── AppDelegate.swift          # App lifecycle, menu bar, hotkeys
 │   └── SetupWindowController.swift # First-run API key setup
@@ -138,17 +138,17 @@ ClueyMac/
 │   └── HotkeyManager.swift        # Global ⌘⇧Space / ⌘⇧X registration
 └── Config/
     ├── AppConfig.swift
-    └── ClueyLog.swift             # Debug log → ~/cluey-debug.log
+    └── GhostLog.swift             # Debug log → ~/ghostmind-debug.log
 ```
 
 ---
 
 ## Debugging
 
-Logs are written to `~/cluey-debug.log`. Tail it during an interview to see transcription, question detection, and API activity:
+Logs are written to `~/ghostmind-debug.log`. Tail it during an interview to see transcription, question detection, and API activity:
 
 ```bash
-tail -f ~/cluey-debug.log
+tail -f ~/ghostmind-debug.log
 ```
 
 ---
