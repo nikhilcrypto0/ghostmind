@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>GhostMind</string>
+    <key>CFBundleExecutable</key>
+    <string>ClueyMac</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.nikhil.ghostmind</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>GhostMind needs microphone access to transcribe interview audio in real-time.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>GhostMind uses on-device speech recognition to transcribe interview questions.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>GhostMind captures interviewer audio from Zoom, Meet, and other video call apps.</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
