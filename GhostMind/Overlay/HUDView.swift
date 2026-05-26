@@ -92,11 +92,22 @@ struct HUDView: View {
         HStack(spacing: 10) {
             statusDot
             Spacer()
+            contextButton
             micButton
             clearButton
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private var contextButton: some View {
+        Button(action: { SettingsWindowController.shared.show() }) {
+            Image(systemName: "person.text.rectangle")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.45))
+        }
+        .buttonStyle(.plain)
+        .help("Interview Context (JD + Background)")
     }
 
     private var statusDot: some View {

@@ -6,23 +6,27 @@ class TranscriptionManager: NSObject {
     static let shared = TranscriptionManager()
 
     private(set) var isReady = false
-    private var rollingTranscript = ""
-    private var currentSegment = ""
-    private(set) var lastUtterance = ""
-    private let maxTranscriptLength = AppConfig.maxTranscriptLength
-    private let queue = DispatchQueue(label: "com.ghostmind.transcription", qos: .userInitiated)
-
-    // Deepgram
-    private var webSocketTask: URLSessionWebSocketTask?
-    private var wsSession: URLSession?
-    private var keepaliveTimer: Timer?
     private var sampleRate: Int = 48000
     private var usingDeepgram = false
-    private var isConnecting = false
-    private var hasNotifiedReady = false
     private var deepgramKey: String = ""
 
-    // Apple Speech fallback
+    // Dual Deepgram streams — mic = candidate, system = interviewer
+    private var micStream: DeepgramStream?
+    private var systemStream: DeepgramStream?
+    private var hasNotifiedReady = false
+
+    // Dialog log — chronological commits from both streams, labeled by source
+    private struct DialogEntry {
+        let timestamp: Date
+        let source: DeepgramStream.Source
+        let text: String
+    }
+    private var dialogLog: [DialogEntry] = []
+    private let dialogQueue = DispatchQueue(label: "com.ghostmind.dialog")
+    private let maxDialogEntries = 40
+
+    // Apple Speech fallback (mic only — used when no Deepgram key)
+    private let queue = DispatchQueue(label: "com.ghostmind.transcription", qos: .userInitiated)
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var appleTask: SFSpeechRecognitionTask?
@@ -30,9 +34,11 @@ class TranscriptionManager: NSObject {
     private let minRestartInterval: TimeInterval = 2.0
     private var restartTimer: Timer?
     private var isRestarting = false
+    private var appleRollingTranscript = ""
+    private var appleCurrentSegment = ""
+    private(set) var appleLastUtterance = ""
 
     func setup() {
-        // Detect hardware sample rate before connecting
         let engine = AVAudioEngine()
         let rate = Int(engine.inputNode.outputFormat(forBus: 0).sampleRate)
         sampleRate = rate > 8000 ? rate : 48000
@@ -41,15 +47,23 @@ class TranscriptionManager: NSObject {
         if let key = loadDeepgramKey(), !key.isEmpty {
             deepgramKey = key
             usingDeepgram = true
-            GhostLog.write("Deepgram Nova-2 selected")
-            requestMicAndConnectDeepgram()
+            GhostLog.write("Deepgram Nova-2 selected (dual stream)")
+            setupDualStreams()
+            requestMicAndConnect()
         } else {
-            GhostLog.write("No Deepgram key found — falling back to Apple Speech")
+            GhostLog.write("No Deepgram key — falling back to Apple Speech (mic only, no interviewer separation)")
             setupAppleSpeech()
         }
     }
 
-    // MARK: - Key loading
+    private func setupDualStreams() {
+        let mic = DeepgramStream(source: .mic, apiKey: deepgramKey, sampleRate: sampleRate)
+        let sys = DeepgramStream(source: .system, apiKey: deepgramKey, sampleRate: 48000)
+        mic.delegate = self
+        sys.delegate = self
+        micStream = mic
+        systemStream = sys
+    }
 
     private func loadDeepgramKey() -> String? {
         if let k = ProcessInfo.processInfo.environment["DEEPGRAM_API_KEY"], !k.isEmpty { return k }
@@ -58,17 +72,14 @@ class TranscriptionManager: NSObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - Deepgram path
-
-    private func requestMicAndConnectDeepgram() {
+    private func requestMicAndConnect() {
         AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
             guard let self else { return }
             DispatchQueue.main.async {
                 if granted {
-                    // Audio capture starts immediately. Any audio sent before the
-                    // WebSocket opens is silently dropped by sendToDeepgram.
                     AudioCaptureManager.shared.start()
-                    self.connectDeepgram()
+                    self.micStream?.connect()
+                    self.systemStream?.connect()
                 } else {
                     NotificationCenter.default.post(name: .whisperReady, object: nil,
                         userInfo: ["error": "Microphone access denied"])
@@ -77,112 +88,23 @@ class TranscriptionManager: NSObject {
         }
     }
 
-    private func connectDeepgram() {
-        guard !isConnecting else { return }
-        isConnecting = true
-
-        // nova-2: best accuracy for conversational speech and technical vocabulary
-        // endpointing=400: commit segment after 400ms of silence
-        let urlStr = "wss://api.deepgram.com/v1/listen"
-            + "?model=nova-2"
-            + "&language=en-US"
-            + "&smart_format=true"
-            + "&interim_results=true"
-            + "&endpointing=400"
-            + "&encoding=linear16"
-            + "&sample_rate=\(sampleRate)"
-            + "&channels=1"
-
-        guard let url = URL(string: urlStr) else {
-            GhostLog.write("Deepgram: bad URL")
-            isConnecting = false
-            return
-        }
-
-        var req = URLRequest(url: url)
-        req.setValue("Token \(deepgramKey)", forHTTPHeaderField: "Authorization")
-        req.timeoutInterval = 10
-
-        wsSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
-        webSocketTask = wsSession?.webSocketTask(with: req)
-        webSocketTask?.resume()
-        isConnecting = false
-
-        GhostLog.write("Deepgram WebSocket initiated — awaiting open confirmation")
-        startKeepalive()
-        receiveLoop()
-    }
-
-    private func startKeepalive() {
-        keepaliveTimer?.invalidate()
-        // Deepgram closes idle connections after ~10s; send KeepAlive every 8s
-        keepaliveTimer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
-            self?.webSocketTask?.send(.string("{\"type\":\"KeepAlive\"}")) { err in
-                if let err { GhostLog.write("Keepalive failed: \(err.localizedDescription)") }
-            }
-        }
-    }
-
-    private func receiveLoop() {
-        webSocketTask?.receive { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let msg):
-                if case .string(let text) = msg {
-                    self.queue.async { self.parseDeepgram(text) }
-                }
-                self.receiveLoop()
-
-            case .failure(let err):
-                GhostLog.write("Deepgram disconnected: \(err.localizedDescription) — reconnecting in 2s")
-                self.keepaliveTimer?.invalidate()
-                self.keepaliveTimer = nil
-                self.webSocketTask = nil
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-                    self?.connectDeepgram()
-                }
-            }
-        }
-    }
-
-    private func parseDeepgram(_ json: String) {
-        guard
-            let data = json.data(using: .utf8),
-            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let channel = obj["channel"] as? [String: Any],
-            let alts = channel["alternatives"] as? [[String: Any]],
-            let text = alts.first?["transcript"] as? String,
-            !text.trimmingCharacters(in: .whitespaces).isEmpty
-        else { return }
-
-        let speechFinal = obj["speech_final"] as? Bool ?? false
-
-        GhostLog.write("Deepgram (\(speechFinal ? "final" : "partial")): \"\(text.suffix(60))\"")
-
-        if speechFinal {
-            commitSegment(text)
-        } else {
-            updatePartial(text)
-        }
-    }
-
-    // MARK: - Buffer input
+    // MARK: - Audio input
 
     func appendBuffer(_ buffer: AVAudioPCMBuffer) {
         if usingDeepgram {
-            sendToDeepgram(buffer)
+            sendBufferTo(stream: micStream, buffer: buffer)
         } else {
             queue.async { self.request?.append(buffer) }
         }
     }
 
-    // Called by SystemAudioCapture — sends pre-converted int16 data directly
+    // Called by SystemAudioCapture — already-converted int16 little-endian PCM
     func sendSystemAudio(_ data: Data) {
-        guard usingDeepgram else { return }
-        webSocketTask?.send(.data(data)) { _ in }
+        systemStream?.send(data)
     }
 
-    private func sendToDeepgram(_ buffer: AVAudioPCMBuffer) {
+    private func sendBufferTo(stream: DeepgramStream?, buffer: AVAudioPCMBuffer) {
+        guard let stream else { return }
         let count = Int(buffer.frameLength)
         guard count > 0 else { return }
         let data: Data
@@ -195,65 +117,49 @@ class TranscriptionManager: NSObject {
         } else if let ch = buffer.int16ChannelData?[0] {
             data = Data(bytes: ch, count: count * 2)
         } else {
-            GhostLog.write("sendToDeepgram: unsupported buffer format")
+            GhostLog.write("sendBufferTo: unsupported buffer format")
             return
         }
-        webSocketTask?.send(.data(data)) { err in
-            if let err { GhostLog.write("Deepgram send error: \(err.localizedDescription)") }
-        }
+        stream.send(data)
     }
 
     // MARK: - Transcript access
 
+    // Labeled dialog suitable for the Claude prompt
     func currentTranscript() -> String {
-        queue.sync { (rollingTranscript + " " + currentSegment).trimmingCharacters(in: .whitespaces) }
+        if usingDeepgram {
+            return dialogQueue.sync {
+                dialogLog.map { "[\($0.source.rawValue)] \($0.text)" }.joined(separator: "\n")
+            }
+        } else {
+            return queue.sync {
+                (appleRollingTranscript + " " + appleCurrentSegment).trimmingCharacters(in: .whitespaces)
+            }
+        }
+    }
+
+    var lastInterviewerUtterance: String {
+        systemStream?.lastUtterance ?? ""
+    }
+
+    var lastCandidateUtterance: String {
+        if usingDeepgram {
+            return micStream?.lastUtterance ?? ""
+        } else {
+            return queue.sync { appleLastUtterance }
+        }
     }
 
     func resetTranscript() {
-        queue.async { self.rollingTranscript = "" }
+        dialogQueue.async { self.dialogLog.removeAll() }
+        queue.async {
+            self.appleRollingTranscript = ""
+            self.appleCurrentSegment = ""
+        }
         GhostLog.write("Transcript reset")
     }
 
-    // MARK: - Segment management
-
-    private func updatePartial(_ text: String) {
-        queue.async {
-            self.currentSegment = text
-            let full = (self.rollingTranscript + " " + text).trimmingCharacters(in: .whitespaces)
-            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
-            QuestionDetector.shared.scheduleDetection(transcript: full) { transcript, mode in
-                AgentRouter.shared.handle(transcript: transcript, mode: mode)
-            }
-        }
-    }
-
-    private func commitSegment(_ text: String) {
-        queue.async {
-            GhostLog.write("Commit: \"\(text)\"")
-            self.rollingTranscript = String((self.rollingTranscript + " " + text)
-                .trimmingCharacters(in: .whitespaces)
-                .suffix(self.maxTranscriptLength))
-            self.currentSegment = ""
-            self.lastUtterance = text
-            let full = self.rollingTranscript
-            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
-            guard !full.isEmpty else { return }
-            QuestionDetector.shared.fireIfQuestion(transcript: full, latestUtterance: text) { transcript, mode in
-                AgentRouter.shared.handle(transcript: transcript, mode: mode)
-            }
-        }
-    }
-
-    // Snapshot currentSegment from queue — safe to call from any thread
-    private func pendingSegment() -> String {
-        queue.sync { currentSegment }
-    }
-
-    private func clearPendingSegment() {
-        queue.async { self.currentSegment = "" }
-    }
-
-    // MARK: - Apple Speech fallback
+    // MARK: - Apple Speech fallback (mic only)
 
     private func setupAppleSpeech() {
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
@@ -287,8 +193,8 @@ class TranscriptionManager: NSObject {
         isRestarting = true
         lastRestartTime = now
 
-        let pending = pendingSegment()
-        if !pending.isEmpty { commitSegment(pending) }
+        let pending = applePendingSegment()
+        if !pending.isEmpty { commitApple(pending) }
 
         appleTask?.cancel(); appleTask = nil
 
@@ -302,18 +208,22 @@ class TranscriptionManager: NSObject {
             if let result {
                 let text = result.bestTranscription.formattedString
                 if result.isFinal {
-                    let final = text.isEmpty ? self.pendingSegment() : text
-                    if !final.isEmpty { self.commitSegment(final) } else { self.clearPendingSegment() }
+                    let final = text.isEmpty ? self.applePendingSegment() : text
+                    if !final.isEmpty {
+                        self.commitApple(final)
+                    } else {
+                        self.queue.async { self.appleCurrentSegment = "" }
+                    }
                     self.isRestarting = false
                     DispatchQueue.main.async { self.startAppleRecognition() }
                 } else {
-                    self.updatePartial(text)
+                    self.updateApplePartial(text)
                 }
             }
             if let err = error as NSError?, err.code != 301 {
                 if err.code == 1110 {
-                    let p = self.pendingSegment()
-                    if !p.isEmpty { self.commitSegment(p) }
+                    let p = self.applePendingSegment()
+                    if !p.isEmpty { self.commitApple(p) }
                     self.isRestarting = false
                     DispatchQueue.main.async { self.startAppleRecognition() }
                 } else {
@@ -331,33 +241,73 @@ class TranscriptionManager: NSObject {
         }
         GhostLog.write("Apple Speech session started")
     }
-}
 
-// MARK: - Deepgram WebSocket open confirmation
+    private func applePendingSegment() -> String {
+        queue.sync { appleCurrentSegment }
+    }
 
-extension TranscriptionManager: URLSessionWebSocketDelegate {
-    func urlSession(
-        _ session: URLSession,
-        webSocketTask: URLSessionWebSocketTask,
-        didOpenWithProtocol protocol: String?
-    ) {
-        GhostLog.write("Deepgram WebSocket opened ✓")
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.isReady = true
-            // Fire whisperReady once per app lifetime — reconnects reuse the open session
-            guard !self.hasNotifiedReady else { return }
-            self.hasNotifiedReady = true
-            NotificationCenter.default.post(name: .whisperReady, object: nil)
+    private func updateApplePartial(_ text: String) {
+        queue.async {
+            self.appleCurrentSegment = text
+            let full = (self.appleRollingTranscript + " " + text).trimmingCharacters(in: .whitespaces)
+            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+            // No question detection on partials in Apple Speech path — only commits
+            _ = full
         }
     }
 
-    func urlSession(
-        _ session: URLSession,
-        webSocketTask: URLSessionWebSocketTask,
-        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
-        reason: Data?
-    ) {
-        GhostLog.write("Deepgram WebSocket closed: code=\(closeCode.rawValue)")
+    private func commitApple(_ text: String) {
+        queue.async {
+            GhostLog.write("Apple Commit: \"\(text)\"")
+            self.appleRollingTranscript = String((self.appleRollingTranscript + " " + text)
+                .trimmingCharacters(in: .whitespaces)
+                .suffix(AppConfig.maxTranscriptLength))
+            self.appleCurrentSegment = ""
+            self.appleLastUtterance = text
+            let full = self.appleRollingTranscript
+            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+            // Apple Speech path can't tell interviewer from candidate — treat all as questions.
+            // This is the degraded fallback when no Deepgram key is configured.
+            QuestionDetector.shared.fireIfQuestion(transcript: full, latestUtterance: text) { transcript, mode in
+                AgentRouter.shared.handle(transcript: transcript, mode: mode)
+            }
+        }
+    }
+}
+
+// MARK: - Deepgram dual-stream delegate
+
+extension TranscriptionManager: DeepgramStreamDelegate {
+    func deepgramStreamDidOpen(_ stream: DeepgramStream) {
+        GhostLog.write("Stream open: \(stream.source.rawValue)")
+        // Fire whisperReady once — mic open is sufficient (system stream may take longer)
+        guard !hasNotifiedReady else { return }
+        hasNotifiedReady = true
+        isReady = true
+        NotificationCenter.default.post(name: .whisperReady, object: nil)
+    }
+
+    func deepgramStream(_ stream: DeepgramStream, didProducePartial text: String) {
+        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+        // Partial-based detection disabled in dual-stream mode — only fire on commits.
+    }
+
+    func deepgramStream(_ stream: DeepgramStream, didCommitSegment text: String) {
+        dialogQueue.sync {
+            dialogLog.append(DialogEntry(timestamp: Date(), source: stream.source, text: text))
+            if dialogLog.count > maxDialogEntries {
+                dialogLog.removeFirst(dialogLog.count - maxDialogEntries)
+            }
+        }
+        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+
+        // ONLY interviewer commits trigger question detection.
+        // Candidate (mic) commits stay as conversational context only.
+        guard stream.source == .system else { return }
+
+        let dialog = currentTranscript()
+        QuestionDetector.shared.fireIfQuestion(transcript: dialog, latestUtterance: text) { transcript, mode in
+            AgentRouter.shared.handle(transcript: transcript, mode: mode)
+        }
     }
 }

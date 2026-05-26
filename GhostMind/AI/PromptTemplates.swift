@@ -92,28 +92,42 @@ enum PromptTemplates {
 
     static func userPrompt(transcript: String, mode: AssistMode) -> String {
         let recent = String(transcript.suffix(2000))
-        let latest = TranscriptionManager.shared.lastUtterance
+        let lastInterviewer = TranscriptionManager.shared.lastInterviewerUtterance
+        let lastCandidate = TranscriptionManager.shared.lastCandidateUtterance
+
         switch mode {
         case .assist:
-            // Pin Claude to the most recent utterance — without this it tends to
-            // re-answer earlier questions still sitting in the transcript buffer.
+            // The transcript is now labeled [Interviewer]/[You]. Pin Claude to
+            // the interviewer's latest question and use the candidate's recent
+            // words as context for tailoring the answer.
+            let questionLine: String
+            if !lastInterviewer.isEmpty {
+                questionLine = "The interviewer JUST asked:\n\"\(lastInterviewer)\""
+            } else {
+                questionLine = "Answer the most recent question in the transcript."
+            }
+            let candidateContext: String
+            if !lastCandidate.isEmpty {
+                candidateContext = "\n\nWhat you (the candidate) recently said:\n\"\(lastCandidate)\""
+            } else {
+                candidateContext = ""
+            }
             return """
-            Conversation transcript (context only):
-            \"\(recent)\"
+            Labeled dialog (context):
+            \(recent)
 
-            The interviewer JUST asked:
-            \"\(latest.isEmpty ? recent.suffix(300).description : latest)\"
+            \(questionLine)\(candidateContext)
 
-            Answer ONLY this latest question. Ignore earlier questions in the transcript.
+            Answer ONLY the interviewer's latest question. Align the answer with what you (the candidate) have already said so the conversation stays consistent. Ignore earlier questions.
             """
         case .whatToSay:
-            return "Conversation transcript:\n\"\(recent)\"\n\nWhat should I say next?"
+            return "Labeled dialog:\n\(recent)\n\nWhat should you (the candidate) say next?"
         case .followUp:
-            return "Conversation transcript:\n\"\(recent)\"\n\nGenerate follow-up questions I could ask."
+            return "Labeled dialog:\n\(recent)\n\nGenerate follow-up questions you could ask the interviewer."
         case .recap:
-            return "Conversation transcript:\n\"\(recent)\"\n\nSummarize this conversation."
+            return "Labeled dialog:\n\(recent)\n\nSummarize this conversation."
         case .custom(let question):
-            return "Conversation transcript:\n\"\(recent)\"\n\nMy question: \(question)"
+            return "Labeled dialog:\n\(recent)\n\nMy question: \(question)"
         }
     }
 }
