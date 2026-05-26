@@ -52,7 +52,7 @@ final class DeepgramStream: NSObject {
         isConnecting = true
 
         let urlStr = "wss://api.deepgram.com/v1/listen"
-            + "?model=nova-2"
+            + "?model=nova-3"
             + "&language=en-US"
             + "&smart_format=true"
             + "&interim_results=true"
