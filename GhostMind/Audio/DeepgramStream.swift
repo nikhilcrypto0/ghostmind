@@ -95,6 +95,13 @@ final class DeepgramStream: NSObject {
         }
     }
 
+    // Force Deepgram to flush any buffered partial as a final. Used when the
+    // upstream audio source (e.g. ScreenCaptureKit) goes idle, so we don't
+    // wait indefinitely for 400ms of silence that will never arrive.
+    func flushFinalize() {
+        webSocketTask?.send(.string("{\"type\":\"Finalize\"}")) { _ in }
+    }
+
     func disconnect() {
         keepaliveTimer?.invalidate()
         keepaliveTimer = nil
@@ -150,10 +157,16 @@ final class DeepgramStream: NSObject {
             !text.trimmingCharacters(in: .whitespaces).isEmpty
         else { return }
 
+        // speech_final: true → Deepgram detected end-of-utterance via endpointing.
+        // is_final: true → that transcript chunk is locked in (won't change), which
+        //                  is also what we get back when we send a Finalize message.
+        // We commit on either, so our forced flushes actually become committed segments.
         let speechFinal = obj["speech_final"] as? Bool ?? false
-        GhostLog.write("Deepgram(\(source.rawValue)) \(speechFinal ? "final" : "partial"): \"\(text.suffix(60))\"")
+        let isFinal = obj["is_final"] as? Bool ?? false
+        let shouldCommit = speechFinal || isFinal
+        GhostLog.write("Deepgram(\(source.rawValue)) \(shouldCommit ? "final" : "partial"): \"\(text.suffix(60))\"")
 
-        if speechFinal {
+        if shouldCommit {
             stateQueue.sync {
                 _transcript = String((_transcript + " " + text)
                     .trimmingCharacters(in: .whitespaces)

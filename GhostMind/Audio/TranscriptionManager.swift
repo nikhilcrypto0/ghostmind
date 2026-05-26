@@ -103,6 +103,12 @@ class TranscriptionManager: NSObject {
         systemStream?.send(data)
     }
 
+    // Called by SystemAudioCapture's heartbeat when ScreenCaptureKit has gone
+    // idle. Forces Deepgram to flush any buffered partial as a final commit.
+    func finalizeSystemStream() {
+        systemStream?.flushFinalize()
+    }
+
     private func sendBufferTo(stream: DeepgramStream?, buffer: AVAudioPCMBuffer) {
         guard let stream else { return }
         let count = Int(buffer.frameLength)
@@ -285,7 +291,11 @@ extension TranscriptionManager: DeepgramStreamDelegate {
 
     func deepgramStream(_ stream: DeepgramStream, didProducePartial text: String) {
         // Partial-based detection disabled in dual-stream mode — only fire on commits.
-        _ = text
+        // But we need to tell SystemAudioCapture about interviewer partials so its
+        // idle-finalize heartbeat knows when an utterance is in flight.
+        if stream.source == .system, !text.isEmpty {
+            SystemAudioCapture.shared.notePartialReceived()
+        }
     }
 
     func deepgramStream(_ stream: DeepgramStream, didCommitSegment text: String) {
@@ -299,6 +309,10 @@ extension TranscriptionManager: DeepgramStreamDelegate {
         // ONLY interviewer commits trigger question detection.
         // Candidate (mic) commits stay as conversational context only.
         guard stream.source == .system else { return }
+
+        // Tell the system-audio heartbeat we got a real final so it doesn't
+        // try to force another Finalize right after.
+        SystemAudioCapture.shared.noteFinalReceived()
 
         let dialog = currentTranscript()
         QuestionDetector.shared.fireIfQuestion(transcript: dialog, latestUtterance: text) { transcript, mode in
