@@ -66,22 +66,35 @@ struct HUDView: View {
     @State var viewModel: HUDViewModel
 
     var body: some View {
-        ZStack {
+        // Content box: VStack + background that follow intrinsic size,
+        // top-aligned inside the window so the dark panel hugs the actual content.
+        VStack(spacing: 0) {
+            contentCard
+            Spacer(minLength: 0)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var contentCard: some View {
+        VStack(spacing: 0) {
+            topBar
+            // Only render the response area when there's something to show — collapses
+            // the HUD to just the top bar + action buttons when idle.
+            if !viewModel.currentResponse.isEmpty || viewModel.isStreaming {
+                Divider().background(Color.white.opacity(0.08))
+                responseArea
+            }
+            Divider().background(Color.white.opacity(0.08))
+            actionButtons
+        }
+        .background(
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color.black.opacity(0.72))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
-
-            VStack(spacing: 0) {
-                topBar
-                Divider().background(Color.white.opacity(0.08))
-                responseArea
-                Divider().background(Color.white.opacity(0.08))
-                actionButtons
-            }
-        }
+        )
         .frame(width: AppConfig.hudWidth)
         .shadow(color: .black.opacity(0.5), radius: 24, x: 0, y: 8)
     }
@@ -89,8 +102,12 @@ struct HUDView: View {
     // MARK: — Top bar (minimal: status dot · mic toggle · close)
 
     private var topBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             statusDot
+            Text(viewModel.micStatus.label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(viewModel.micStatus.color.opacity(0.85))
+                .lineLimit(1)
             Spacer()
             contextButton
             micButton
@@ -149,22 +166,19 @@ struct HUDView: View {
 
     // MARK: — Response area
 
+    // Only renders when there's content — outer guard in body controls visibility.
     private var responseArea: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 0).id("top")
-                    if viewModel.currentResponse.isEmpty && !viewModel.isStreaming {
-                        emptyState
-                    } else {
-                        Text(viewModel.currentResponse + (viewModel.isStreaming ? "▋" : ""))
-                            .font(.system(size: 13.5))
-                            .foregroundColor(.white.opacity(0.92))
-                            .textSelection(.enabled)
-                            .lineSpacing(3)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                    }
+                    Text(viewModel.currentResponse + (viewModel.isStreaming ? "▋" : ""))
+                        .font(.system(size: 13.5))
+                        .foregroundColor(.white.opacity(0.92))
+                        .textSelection(.enabled)
+                        .lineSpacing(3)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -173,23 +187,7 @@ struct HUDView: View {
                 if streaming { proxy.scrollTo("top", anchor: .top) }
             }
         }
-        .frame(minHeight: 90, maxHeight: 280)
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "waveform.circle")
-                .font(.system(size: 28))
-                .foregroundColor(.white.opacity(0.2))
-            Text("Listening for questions...")
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.3))
-            Text("Auto-detects questions · or use the buttons below")
-                .font(.system(size: 10))
-                .foregroundColor(.white.opacity(0.2))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .frame(maxHeight: 280)
     }
 
     // MARK: — Action buttons
