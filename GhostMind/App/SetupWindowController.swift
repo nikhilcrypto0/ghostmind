@@ -167,7 +167,7 @@ struct SetupView: View {
                 .buttonStyle(.plain)
             }
 
-            SecureField(placeholder, text: text)
+            TextField(placeholder, text: text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundColor(.white.opacity(0.85))
@@ -179,6 +179,14 @@ struct SetupView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
+
+            // Inline validation feedback so user can confirm paste landed
+            if !text.wrappedValue.isEmpty {
+                let trimmed = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                Text("\(trimmed.count) chars · \(trimmed.prefix(12))…\(trimmed.suffix(6))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.35))
+            }
         }
     }
 
