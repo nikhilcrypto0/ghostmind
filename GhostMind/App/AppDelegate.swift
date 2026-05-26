@@ -52,6 +52,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.post(name: .whisperLoading, object: nil)
         TranscriptionManager.shared.setup()
 
+        // Trigger the macOS mic TCC prompt early so it's resolved before the user
+        // toggles the mic. System audio (speaker) uses ScreenCaptureKit and is unaffected.
+        MicPermission.authorize { _ in }
+
         NotificationCenter.default.addObserver(forName: .whisperReady, object: nil, queue: .main) { n in
             guard n.userInfo?["error"] == nil else { return }
             guard ContextManager.shared.captureSystemAudio else { return }
@@ -132,8 +136,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             AudioCaptureManager.shared.stop()
             NotificationCenter.default.post(name: .micMuted, object: nil)
         } else {
-            AudioCaptureManager.shared.start()
-            NotificationCenter.default.post(name: .micUnmuted, object: nil)
+            MicPermission.authorize { granted in
+                guard granted else {
+                    NotificationCenter.default.post(name: .micMuted, object: nil)
+                    return
+                }
+                AudioCaptureManager.shared.start()
+                NotificationCenter.default.post(name: .micUnmuted, object: nil)
+            }
         }
     }
 
