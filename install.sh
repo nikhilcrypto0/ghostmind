@@ -139,8 +139,17 @@ cp .build/release/GhostMind "$APP/Contents/MacOS/GhostMind"
 cp Info.plist               "$APP/Contents/Info.plist"
 cp AppIcon.icns             "$APP/Contents/Resources/AppIcon.icns" 2>/dev/null || true
 
-# Sign (with entitlements if present)
+# Sign (with entitlements if present).
+# audio-input must be in the entitlements file when hardened runtime is on,
+# otherwise macOS silently denies AVCaptureDevice.requestAccess without
+# showing a prompt — see the long debugging session that led to this guard.
 if [ -f GhostMind.entitlements ]; then
+    if ! grep -q "com.apple.security.device.audio-input" GhostMind.entitlements; then
+        echo "  ⚠ GhostMind.entitlements is missing com.apple.security.device.audio-input"
+        echo "    Microphone permission dialog will not appear under hardened runtime."
+        echo "    Aborting — fix the entitlements file before reinstalling."
+        exit 1
+    fi
     codesign "${SIGN_ARGS[@]}" --entitlements GhostMind.entitlements "$APP" 2>/dev/null
 else
     codesign "${SIGN_ARGS[@]}" "$APP" 2>/dev/null
