@@ -140,18 +140,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension Notification.Name {
-    static let toggleOverlay        = Notification.Name("toggleOverlay")
-    static let clearResponse        = Notification.Name("clearResponse")
-    static let newAnswer            = Notification.Name("newAnswer")
-    static let answerToken          = Notification.Name("answerToken")
-    static let answerDone           = Notification.Name("answerDone")
-    static let whisperLoading       = Notification.Name("whisperLoading")
-    static let whisperReady         = Notification.Name("whisperReady")
-    static let audioTranscribing    = Notification.Name("audioTranscribing")
-    static let transcriptUpdate     = Notification.Name("transcriptUpdate")
-    static let audioLevel           = Notification.Name("audioLevel")
-    static let questionTypeDetected = Notification.Name("questionTypeDetected")
-    static let toggleMic            = Notification.Name("toggleMic")
-    static let micMuted             = Notification.Name("micMuted")
-    static let micUnmuted           = Notification.Name("micUnmuted")
+    static let toggleOverlay  = Notification.Name("toggleOverlay")
+    static let clearResponse  = Notification.Name("clearResponse")
+    static let newAnswer      = Notification.Name("newAnswer")
+    static let answerToken    = Notification.Name("answerToken")
+    static let answerDone     = Notification.Name("answerDone")
+    static let whisperLoading = Notification.Name("whisperLoading")
+    static let whisperReady   = Notification.Name("whisperReady")
+    static let toggleMic      = Notification.Name("toggleMic")
+    static let micMuted       = Notification.Name("micMuted")
+    static let micUnmuted     = Notification.Name("micUnmuted")
 }

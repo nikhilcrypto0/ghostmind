@@ -9,6 +9,9 @@ enum AppConfig {
     static let claudeModel = "claude-haiku-4-5-20251001"
     static let maxTokens = 1024
 
+    // Deepgram
+    static let deepgramModel = "nova-3"
+
     // Transcript
     static let maxTranscriptLength = 8000
 

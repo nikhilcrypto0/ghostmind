@@ -36,7 +36,6 @@ class HUDViewModel {
     var currentResponse: String = ""
     var isStreaming: Bool = false
     var micStatus: MicStatus = .loading
-    var audioLevel: Float = 0
     var activeMode: String = "Assist"
 
     func appendToken(_ token: String) {

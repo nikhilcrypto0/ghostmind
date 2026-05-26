@@ -87,7 +87,7 @@ struct SetupView: View {
                 keyField(
                     number: "2",
                     title: "Deepgram API Key",
-                    subtitle: "Powers speech-to-text — Nova-2 model",
+                    subtitle: "Powers speech-to-text — Deepgram \(AppConfig.deepgramModel)",
                     linkLabel: "Get free key at console.deepgram.com →",
                     linkURL: "https://console.deepgram.com/",
                     placeholder: "2cad0f0...",
@@ -159,7 +159,9 @@ struct SetupView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
                 Spacer()
-                Button(action: { NSWorkspace.shared.open(URL(string: linkURL)!) }) {
+                Button(action: {
+                    if let url = URL(string: linkURL) { NSWorkspace.shared.open(url) }
+                }) {
                     Text(linkLabel)
                         .font(.system(size: 10))
                         .foregroundColor(Color(red: 0.4, green: 0.45, blue: 1.0))
@@ -180,10 +182,11 @@ struct SetupView: View {
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
 
-            // Inline validation feedback so user can confirm paste landed
+            // Confirm paste landed without leaking the key itself — important
+            // because this window may be visible while sharing your screen.
             if !text.wrappedValue.isEmpty {
                 let trimmed = text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                Text("\(trimmed.count) chars · \(trimmed.prefix(12))…\(trimmed.suffix(6))")
+                Text("\(trimmed.count) chars pasted")
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white.opacity(0.35))
             }

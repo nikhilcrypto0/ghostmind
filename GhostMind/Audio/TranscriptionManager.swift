@@ -47,7 +47,7 @@ class TranscriptionManager: NSObject {
         if let key = loadDeepgramKey(), !key.isEmpty {
             deepgramKey = key
             usingDeepgram = true
-            GhostLog.write("Deepgram Nova-2 selected (dual stream)")
+            GhostLog.write("Deepgram \(AppConfig.deepgramModel) selected (dual stream)")
             setupDualStreams()
             requestMicAndConnect()
         } else {
@@ -249,10 +249,7 @@ class TranscriptionManager: NSObject {
     private func updateApplePartial(_ text: String) {
         queue.async {
             self.appleCurrentSegment = text
-            let full = (self.appleRollingTranscript + " " + text).trimmingCharacters(in: .whitespaces)
-            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
-            // No question detection on partials in Apple Speech path — only commits
-            _ = full
+            // No question detection on partials in Apple Speech path — only commits.
         }
     }
 
@@ -265,7 +262,6 @@ class TranscriptionManager: NSObject {
             self.appleCurrentSegment = ""
             self.appleLastUtterance = text
             let full = self.appleRollingTranscript
-            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
             // Apple Speech path can't tell interviewer from candidate — treat all as questions.
             // This is the degraded fallback when no Deepgram key is configured.
             QuestionDetector.shared.fireIfQuestion(transcript: full, latestUtterance: text) { transcript, mode in
@@ -288,8 +284,8 @@ extension TranscriptionManager: DeepgramStreamDelegate {
     }
 
     func deepgramStream(_ stream: DeepgramStream, didProducePartial text: String) {
-        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
         // Partial-based detection disabled in dual-stream mode — only fire on commits.
+        _ = text
     }
 
     func deepgramStream(_ stream: DeepgramStream, didCommitSegment text: String) {
@@ -299,7 +295,6 @@ extension TranscriptionManager: DeepgramStreamDelegate {
                 dialogLog.removeFirst(dialogLog.count - maxDialogEntries)
             }
         }
-        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
 
         // ONLY interviewer commits trigger question detection.
         // Candidate (mic) commits stay as conversational context only.

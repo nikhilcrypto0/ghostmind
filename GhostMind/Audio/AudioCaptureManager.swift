@@ -1,5 +1,4 @@
 import AVFoundation
-import Accelerate
 import Foundation
 
 class AudioCaptureManager: NSObject {
@@ -39,16 +38,6 @@ class AudioCaptureManager: NSObject {
     }
 
     private func processBuffer(_ buffer: AVAudioPCMBuffer) {
-        // Feed directly to speech recognizer — no chunking needed
         TranscriptionManager.shared.appendBuffer(buffer)
-
-        // Compute audio level for HUD indicator (vDSP — no per-callback allocation)
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let frameCount = vDSP_Length(buffer.frameLength)
-        guard frameCount > 0 else { return }
-        var rms: Float = 0
-        vDSP_rmsqv(channelData, 1, &rms, frameCount)
-        let level = min(rms * 10, 1.0)
-        NotificationCenter.default.post(name: .audioLevel, object: nil, userInfo: ["level": level])
     }
 }

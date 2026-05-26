@@ -2,7 +2,9 @@ import AppKit
 import SwiftUI
 
 class OverlayWindowController: NSWindowController {
-    private var hudViewModel: HUDViewModel!
+    // Initialized at declaration so notification handlers can fire safely
+    // even before convenience init completes assigning observers.
+    private let hudViewModel = HUDViewModel()
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
@@ -23,25 +25,37 @@ class OverlayWindowController: NSWindowController {
             defer: false
         )
 
-        let viewModel = HUDViewModel()
-        let hostingView = NSHostingView(rootView: HUDView(viewModel: viewModel))
-        window.contentView = hostingView
-
         self.init(window: window)
-        self.hudViewModel = viewModel
+
+        // NSHostingController + preferredContentSize makes the window resize to
+        // match the SwiftUI HUD's intrinsic content height. When the HUD collapses
+        // (no answer streaming), the window shrinks too — so clicks in the area
+        // beneath the HUD pass through to whatever app sits there.
+        let hosting = NSHostingController(rootView: HUDView(viewModel: hudViewModel))
+        hosting.sizingOptions = [.preferredContentSize]
+        window.contentViewController = hosting
+
+        anchorTopRight()
+        window.makeKeyAndOrderFront(nil)
 
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(handleAnswerToken(_:)),   name: .answerToken,      object: nil)
-        nc.addObserver(self, selector: #selector(handleNewAnswer(_:)),     name: .newAnswer,        object: nil)
-        nc.addObserver(self, selector: #selector(handleAnswerDone),        name: .answerDone,       object: nil)
-        nc.addObserver(self, selector: #selector(handleWhisperLoading),    name: .whisperLoading,   object: nil)
-        nc.addObserver(self, selector: #selector(handleWhisperReady(_:)),  name: .whisperReady,     object: nil)
-        nc.addObserver(self, selector: #selector(handleTranscribing),      name: .audioTranscribing,object: nil)
-        nc.addObserver(self, selector: #selector(handleTranscriptUpdate(_:)),name: .transcriptUpdate,object: nil)
-        nc.addObserver(self, selector: #selector(handleAudioLevel(_:)),    name: .audioLevel,       object: nil)
-        nc.addObserver(self, selector: #selector(handleQuestionType(_:)),  name: .questionTypeDetected, object: nil)
-        nc.addObserver(self, selector: #selector(handleMicMuted),          name: .micMuted,             object: nil)
-        nc.addObserver(self, selector: #selector(handleMicUnmuted),        name: .micUnmuted,           object: nil)
+        // Live observers — these all drive HUDViewModel state.
+        nc.addObserver(self, selector: #selector(handleAnswerToken(_:)),   name: .answerToken,    object: nil)
+        nc.addObserver(self, selector: #selector(handleNewAnswer(_:)),     name: .newAnswer,      object: nil)
+        nc.addObserver(self, selector: #selector(handleAnswerDone),        name: .answerDone,     object: nil)
+        nc.addObserver(self, selector: #selector(handleWhisperLoading),    name: .whisperLoading, object: nil)
+        nc.addObserver(self, selector: #selector(handleWhisperReady(_:)),  name: .whisperReady,   object: nil)
+        nc.addObserver(self, selector: #selector(handleMicMuted),          name: .micMuted,       object: nil)
+        nc.addObserver(self, selector: #selector(handleMicUnmuted),        name: .micUnmuted,     object: nil)
+
+        // Re-anchor to the top-right whenever the window resizes (it shrinks when
+        // the HUD collapses, grows when an answer streams).
+        nc.addObserver(self, selector: #selector(handleWindowResize),
+                       name: NSWindow.didResizeNotification, object: window)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     func toggle() {
@@ -50,6 +64,23 @@ class OverlayWindowController: NSWindowController {
     }
 
     func clear() { DispatchQueue.main.async { self.hudViewModel.clear() } }
+
+    private func anchorTopRight() {
+        guard let window, let screen = window.screen ?? NSScreen.main else { return }
+        let margin = AppConfig.hudMargin
+        let frame = window.frame
+        let newOrigin = NSPoint(
+            x: screen.visibleFrame.maxX - frame.width - margin,
+            y: screen.visibleFrame.maxY - frame.height - margin
+        )
+        if window.frame.origin != newOrigin {
+            window.setFrameOrigin(newOrigin)
+        }
+    }
+
+    @objc private func handleWindowResize() {
+        anchorTopRight()
+    }
 
     @objc private func handleAnswerToken(_ n: Notification) {
         guard let token = n.userInfo?["token"] as? String else { return }
@@ -78,28 +109,11 @@ class OverlayWindowController: NSWindowController {
         }
     }
 
-    @objc private func handleTranscribing() {
-        // no-op: transcribing state removed, listening covers this
-    }
-
-    @objc private func handleTranscriptUpdate(_ n: Notification) {
-        // Transcript updates drive QuestionDetector internally — HUD doesn't render them.
-    }
-
-    @objc private func handleAudioLevel(_ n: Notification) {
-        guard let level = n.userInfo?["level"] as? Float else { return }
-        DispatchQueue.main.async { self.hudViewModel.audioLevel = level }
-    }
-
     @objc private func handleMicMuted() {
         DispatchQueue.main.async { self.hudViewModel.micStatus = .muted }
     }
 
     @objc private func handleMicUnmuted() {
         DispatchQueue.main.async { self.hudViewModel.micStatus = .listening }
-    }
-
-    @objc private func handleQuestionType(_ n: Notification) {
-        // questionType now embedded in AssistMode — no separate state needed
     }
 }

@@ -51,8 +51,13 @@ final class DeepgramStream: NSObject {
         guard !isConnecting else { return }
         isConnecting = true
 
+        // Always tear down any previous session before creating a new one —
+        // reconnect paths must not leak URLSessions or their retained delegates.
+        session?.invalidateAndCancel()
+        session = nil
+
         let urlStr = "wss://api.deepgram.com/v1/listen"
-            + "?model=nova-3"
+            + "?model=\(AppConfig.deepgramModel)"
             + "&language=en-US"
             + "&smart_format=true"
             + "&interim_results=true"
@@ -74,7 +79,8 @@ final class DeepgramStream: NSObject {
         session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         webSocketTask = session?.webSocketTask(with: req)
         webSocketTask?.resume()
-        isConnecting = false
+        // NOTE: do NOT clear isConnecting here — the handshake hasn't completed.
+        // It's cleared in didOpenWithProtocol (success) or disconnect() (teardown).
 
         GhostLog.write("Deepgram(\(source.rawValue)) WebSocket initiated")
         startKeepalive()
@@ -96,6 +102,8 @@ final class DeepgramStream: NSObject {
         webSocketTask = nil
         session?.invalidateAndCancel()
         session = nil
+        isConnecting = false
+        hasNotifiedOpen = false
     }
 
     private func startKeepalive() {
@@ -116,9 +124,15 @@ final class DeepgramStream: NSObject {
                 self.receiveLoop()
             case .failure(let err):
                 GhostLog.write("Deepgram(\(self.source.rawValue)) disconnected: \(err.localizedDescription) — reconnecting in 2s")
+                // Tear down everything before scheduling the reconnect so connect()
+                // starts from a clean slate (no leaked URLSession, flags reset).
                 self.keepaliveTimer?.invalidate()
                 self.keepaliveTimer = nil
                 self.webSocketTask = nil
+                self.session?.invalidateAndCancel()
+                self.session = nil
+                self.isConnecting = false
+                self.hasNotifiedOpen = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
                     self?.connect()
                 }
@@ -168,6 +182,7 @@ extension DeepgramStream: URLSessionWebSocketDelegate {
         didOpenWithProtocol protocol: String?
     ) {
         GhostLog.write("Deepgram(\(source.rawValue)) WebSocket opened ✓")
+        isConnecting = false
         guard !hasNotifiedOpen else { return }
         hasNotifiedOpen = true
         DispatchQueue.main.async { [weak self] in
