@@ -8,7 +8,7 @@ class TranscriptionManager: NSObject {
     private(set) var isReady = false
     private var rollingTranscript = ""
     private var currentSegment = ""
-    private let maxTranscriptLength = 8000
+    private let maxTranscriptLength = AppConfig.maxTranscriptLength
     private let queue = DispatchQueue(label: "com.ghostmind.transcription", qos: .userInitiated)
 
     // Deepgram
@@ -18,6 +18,7 @@ class TranscriptionManager: NSObject {
     private var sampleRate: Int = 48000
     private var usingDeepgram = false
     private var isConnecting = false
+    private var hasNotifiedReady = false
     private var deepgramKey: String = ""
 
     // Apple Speech fallback
@@ -63,10 +64,10 @@ class TranscriptionManager: NSObject {
             guard let self else { return }
             DispatchQueue.main.async {
                 if granted {
-                    self.connectDeepgram()
+                    // Audio capture starts immediately. Any audio sent before the
+                    // WebSocket opens is silently dropped by sendToDeepgram.
                     AudioCaptureManager.shared.start()
-                    self.isReady = true
-                    NotificationCenter.default.post(name: .whisperReady, object: nil)
+                    self.connectDeepgram()
                 } else {
                     NotificationCenter.default.post(name: .whisperReady, object: nil,
                         userInfo: ["error": "Microphone access denied"])
@@ -101,12 +102,12 @@ class TranscriptionManager: NSObject {
         req.setValue("Token \(deepgramKey)", forHTTPHeaderField: "Authorization")
         req.timeoutInterval = 10
 
-        wsSession = URLSession(configuration: .default)
+        wsSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
         webSocketTask = wsSession?.webSocketTask(with: req)
         webSocketTask?.resume()
         isConnecting = false
 
-        GhostLog.write("Deepgram WebSocket opened")
+        GhostLog.write("Deepgram WebSocket initiated — awaiting open confirmation")
         startKeepalive()
         receiveLoop()
     }
@@ -215,26 +216,39 @@ class TranscriptionManager: NSObject {
     // MARK: - Segment management
 
     private func updatePartial(_ text: String) {
-        currentSegment = text
-        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
-        let full = (rollingTranscript + " " + text).trimmingCharacters(in: .whitespaces)
-        QuestionDetector.shared.scheduleDetection(transcript: full) { transcript, mode in
-            AgentRouter.shared.handle(transcript: transcript, mode: mode)
+        queue.async {
+            self.currentSegment = text
+            let full = (self.rollingTranscript + " " + text).trimmingCharacters(in: .whitespaces)
+            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+            QuestionDetector.shared.scheduleDetection(transcript: full) { transcript, mode in
+                AgentRouter.shared.handle(transcript: transcript, mode: mode)
+            }
         }
     }
 
     private func commitSegment(_ text: String) {
-        GhostLog.write("Commit: \"\(text)\"")
-        rollingTranscript = String((rollingTranscript + " " + text)
-            .trimmingCharacters(in: .whitespaces)
-            .suffix(maxTranscriptLength))
-        currentSegment = ""
-        NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
-        let full = rollingTranscript
-        guard !full.isEmpty else { return }
-        QuestionDetector.shared.fireIfQuestion(transcript: full) { transcript, mode in
-            AgentRouter.shared.handle(transcript: transcript, mode: mode)
+        queue.async {
+            GhostLog.write("Commit: \"\(text)\"")
+            self.rollingTranscript = String((self.rollingTranscript + " " + text)
+                .trimmingCharacters(in: .whitespaces)
+                .suffix(self.maxTranscriptLength))
+            self.currentSegment = ""
+            let full = self.rollingTranscript
+            NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
+            guard !full.isEmpty else { return }
+            QuestionDetector.shared.fireIfQuestion(transcript: full) { transcript, mode in
+                AgentRouter.shared.handle(transcript: transcript, mode: mode)
+            }
         }
+    }
+
+    // Snapshot currentSegment from queue — safe to call from any thread
+    private func pendingSegment() -> String {
+        queue.sync { currentSegment }
+    }
+
+    private func clearPendingSegment() {
+        queue.async { self.currentSegment = "" }
     }
 
     // MARK: - Apple Speech fallback
@@ -256,8 +270,6 @@ class TranscriptionManager: NSObject {
         }
     }
 
-    func startRecognition() { startAppleRecognition() }
-
     private func startAppleRecognition() {
         guard !isRestarting else { return }
         guard let recognizer, recognizer.isAvailable else { return }
@@ -273,7 +285,7 @@ class TranscriptionManager: NSObject {
         isRestarting = true
         lastRestartTime = now
 
-        let pending = currentSegment
+        let pending = pendingSegment()
         if !pending.isEmpty { commitSegment(pending) }
 
         appleTask?.cancel(); appleTask = nil
@@ -288,8 +300,8 @@ class TranscriptionManager: NSObject {
             if let result {
                 let text = result.bestTranscription.formattedString
                 if result.isFinal {
-                    let final = text.isEmpty ? self.currentSegment : text
-                    if !final.isEmpty { self.commitSegment(final) } else { self.currentSegment = "" }
+                    let final = text.isEmpty ? self.pendingSegment() : text
+                    if !final.isEmpty { self.commitSegment(final) } else { self.clearPendingSegment() }
                     self.isRestarting = false
                     DispatchQueue.main.async { self.startAppleRecognition() }
                 } else {
@@ -298,7 +310,7 @@ class TranscriptionManager: NSObject {
             }
             if let err = error as NSError?, err.code != 301 {
                 if err.code == 1110 {
-                    let p = self.currentSegment
+                    let p = self.pendingSegment()
                     if !p.isEmpty { self.commitSegment(p) }
                     self.isRestarting = false
                     DispatchQueue.main.async { self.startAppleRecognition() }
@@ -316,5 +328,34 @@ class TranscriptionManager: NSObject {
             self?.startAppleRecognition()
         }
         GhostLog.write("Apple Speech session started")
+    }
+}
+
+// MARK: - Deepgram WebSocket open confirmation
+
+extension TranscriptionManager: URLSessionWebSocketDelegate {
+    func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didOpenWithProtocol protocol: String?
+    ) {
+        GhostLog.write("Deepgram WebSocket opened ✓")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isReady = true
+            // Fire whisperReady once per app lifetime — reconnects reuse the open session
+            guard !self.hasNotifiedReady else { return }
+            self.hasNotifiedReady = true
+            NotificationCenter.default.post(name: .whisperReady, object: nil)
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        webSocketTask: URLSessionWebSocketTask,
+        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+        reason: Data?
+    ) {
+        GhostLog.write("Deepgram WebSocket closed: code=\(closeCode.rawValue)")
     }
 }

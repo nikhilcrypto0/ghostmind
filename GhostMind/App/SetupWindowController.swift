@@ -36,8 +36,9 @@ struct SetupView: View {
     @State private var errorMessage: String = ""
 
     private var canContinue: Bool {
-        anthropicKey.trimmingCharacters(in: .whitespacesAndNewlines).count > 20 &&
-        deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines).count > 20
+        let ak = anthropicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dk = deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ak.hasPrefix("sk-ant-") && ak.count > 20 && dk.count > 20
     }
 
     var body: some View {

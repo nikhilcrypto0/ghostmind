@@ -27,8 +27,8 @@ class QuestionDetector {
     static let shared = QuestionDetector()
 
     private var debounceTask: Task<Void, Never>?
-    private let silenceThreshold: Double = 1.5
-    private let cooldownInterval: TimeInterval = 5.0
+    private let silenceThreshold: Double = AppConfig.questionDebounceSeconds
+    private let cooldownInterval: TimeInterval = AppConfig.answerCooldownSeconds
     private var lastFireTime = Date.distantPast
     private var lastTranscriptLength = 0
 

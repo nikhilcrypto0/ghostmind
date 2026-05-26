@@ -31,8 +31,8 @@ class ClaudeClient {
         urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
 
         let body: [String: Any] = [
-            "model": "claude-haiku-4-5",
-            "max_tokens": 1024,
+            "model": AppConfig.claudeModel,
+            "max_tokens": AppConfig.maxTokens,
             "stream": true,
             "system": PromptTemplates.systemPrompt(for: mode),
             "messages": [["role": "user", "content": PromptTemplates.userPrompt(transcript: transcript, mode: mode)]]
@@ -73,7 +73,10 @@ class ClaudeClient {
                     DispatchQueue.main.async { onComplete() }
                 }
             } catch {
-                if (error as NSError).code == NSURLErrorCancelled { return }
+                if Task.isCancelled { return }
+                let nsErr = error as NSError
+                if nsErr.code == NSURLErrorCancelled { return }
+                if nsErr.domain == NSURLErrorDomain && nsErr.code == NSURLErrorNetworkConnectionLost { return }
                 GhostLog.write("ClaudeClient: error — \(error.localizedDescription)")
                 DispatchQueue.main.async { onError(error) }
             }

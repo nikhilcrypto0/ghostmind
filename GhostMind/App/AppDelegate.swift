@@ -7,6 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayWindowController: OverlayWindowController?
     private var statusItem: NSStatusItem?
     private var launchAtLoginItem: NSMenuItem?
+    private var setupWindowController: SetupWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -30,10 +31,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if hasAnthropicKey && hasDeepgramKey {
             startAudio()
         } else {
-            let setup = SetupWindowController(onComplete: { [weak self] in
+            setupWindowController = SetupWindowController(onComplete: { [weak self] in
                 self?.startAudio()
+                self?.setupWindowController = nil
             })
-            setup.show()
+            setupWindowController?.show()
         }
     }
 
@@ -135,16 +137,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showMicDeniedAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Microphone Access Required"
-        alert.informativeText = "GhostMind needs microphone access to transcribe interview questions.\n\nGo to System Settings → Privacy & Security → Microphone and enable GhostMind."
-        alert.addButton(withTitle: "Open Settings")
-        alert.addButton(withTitle: "Dismiss")
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-        }
-    }
 }
 
 extension Notification.Name {

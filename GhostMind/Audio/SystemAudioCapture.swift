@@ -56,25 +56,45 @@ extension SystemAudioCapture: SCStreamOutput {
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, sampleBuffer.numSamples > 0 else { return }
 
-        var bufferList = AudioBufferList()
+        // Query the required AudioBufferList size first — a stream with multiple
+        // buffers (e.g. non-interleaved stereo) needs more than a single AudioBuffer.
+        var sizeNeeded: Int = 0
         var blockBuffer: CMBlockBuffer?
 
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        var status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            sampleBuffer,
+            bufferListSizeNeededOut: &sizeNeeded,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: nil
+        )
+        guard status == noErr, sizeNeeded > 0 else { return }
+
+        let listPtr = UnsafeMutableRawPointer.allocate(byteCount: sizeNeeded, alignment: 16)
+        defer { listPtr.deallocate() }
+        let listTypedPtr = listPtr.assumingMemoryBound(to: AudioBufferList.self)
+
+        status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
             sampleBuffer,
             bufferListSizeNeededOut: nil,
-            bufferListOut: &bufferList,
-            bufferListSize: MemoryLayout<AudioBufferList>.size,
+            bufferListOut: listTypedPtr,
+            bufferListSize: sizeNeeded,
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
             flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
             blockBufferOut: &blockBuffer
         )
+        guard status == noErr else { return }
 
-        guard status == noErr,
-              let dataPointer = bufferList.mBuffers.mData else { return }
+        let abl = UnsafeMutableAudioBufferListPointer(listTypedPtr)
+        guard let firstBuffer = abl.first, let dataPointer = firstBuffer.mData else { return }
 
-        let byteCount = Int(bufferList.mBuffers.mDataByteSize)
+        let byteCount = Int(firstBuffer.mDataByteSize)
         let floatCount = byteCount / MemoryLayout<Float>.size
+        guard floatCount > 0 else { return }
         let floats = dataPointer.assumingMemoryBound(to: Float.self)
 
         var int16Samples = [Int16](repeating: 0, count: floatCount)

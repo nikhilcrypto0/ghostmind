@@ -36,7 +36,6 @@ class HUDViewModel {
     var currentResponse: String = ""
     var isStreaming: Bool = false
     var micStatus: MicStatus = .loading
-    var liveTranscript: String = ""
     var audioLevel: Float = 0
     var activeMode: String = "Assist"
 
@@ -87,7 +86,7 @@ struct HUDView: View {
                 inputBar
             }
         }
-        .frame(width: 480)
+        .frame(width: AppConfig.hudWidth)
         .shadow(color: .black.opacity(0.5), radius: 24, x: 0, y: 8)
     }
 

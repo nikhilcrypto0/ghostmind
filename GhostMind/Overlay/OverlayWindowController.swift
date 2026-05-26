@@ -2,13 +2,13 @@ import AppKit
 import SwiftUI
 
 class OverlayWindowController: NSWindowController {
-    private var hudViewModel = HUDViewModel()
+    private var hudViewModel: HUDViewModel!
 
     convenience init() {
         let screen = NSScreen.main ?? NSScreen.screens[0]
-        let width: CGFloat = 440
-        let height: CGFloat = 620
-        let margin: CGFloat = 20
+        let width = AppConfig.hudWidth
+        let height = AppConfig.hudHeight
+        let margin = AppConfig.hudMargin
         let rect = NSRect(
             x: screen.visibleFrame.maxX - width - margin,
             y: screen.visibleFrame.maxY - height - margin,
@@ -83,10 +83,7 @@ class OverlayWindowController: NSWindowController {
     }
 
     @objc private func handleTranscriptUpdate(_ n: Notification) {
-        guard let text = n.userInfo?["text"] as? String else { return }
-        DispatchQueue.main.async {
-            self.hudViewModel.liveTranscript = String(text.suffix(120))
-        }
+        // Transcript updates drive QuestionDetector internally — HUD doesn't render them.
     }
 
     @objc private func handleAudioLevel(_ n: Notification) {

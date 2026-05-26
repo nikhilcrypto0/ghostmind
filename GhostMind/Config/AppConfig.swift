@@ -5,14 +5,19 @@ enum AppConfig {
         ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""
     }
 
-    static let whisperModel = "base.en"
-    static let claudeModel = "claude-haiku-4-5"
+    // Claude
+    static let claudeModel = "claude-haiku-4-5-20251001"
     static let maxTokens = 1024
-    static let audioChunkInterval: TimeInterval = 5.0
-    static let questionDebounceSeconds: Double = 2.0
-    static let answerCooldownSeconds: Double = 8.0
-    static let maxTranscriptLength = 2000
-    static let hudWidth: CGFloat = 420
-    static let hudMaxHeight: CGFloat = 600
+
+    // Transcript
+    static let maxTranscriptLength = 8000
+
+    // QuestionDetector
+    static let questionDebounceSeconds: Double = 1.5
+    static let answerCooldownSeconds: TimeInterval = 5.0
+
+    // HUD
+    static let hudWidth: CGFloat = 480
+    static let hudHeight: CGFloat = 620
     static let hudMargin: CGFloat = 20
 }
