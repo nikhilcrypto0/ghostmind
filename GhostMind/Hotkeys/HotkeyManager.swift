@@ -33,8 +33,7 @@ class HotkeyManager {
                 NotificationCenter.default.post(name: .answerDone, object: nil)
                 return
             }
-            let type = QuestionDetector.shared.analyze(transcript: transcript)?.type ?? .behavioral
-            AgentRouter.shared.handle(transcript: transcript, mode: .assist(type))
+            AgentRouter.shared.handle(transcript: transcript, mode: .assist)
         }
     }
 }

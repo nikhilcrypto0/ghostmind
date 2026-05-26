@@ -194,10 +194,9 @@ struct HUDView: View {
     private var actionButtons: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
-                modeButton(icon: "sparkles", label: "Assist", mode: .assist(.behavioral)) {
+                modeButton(icon: "sparkles", label: "Assist", mode: .assist) {
                     let t = TranscriptionManager.shared.currentTranscript()
-                    let type = QuestionDetector.shared.analyze(transcript: t)?.type ?? .behavioral
-                    fireMode(.assist(type), transcript: t)
+                    fireMode(.assist, transcript: t)
                 }
                 modeSeparator
                 modeButton(icon: "text.bubble", label: "What should I say?", mode: .whatToSay) {

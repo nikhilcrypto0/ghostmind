@@ -1,7 +1,7 @@
 import Foundation
 
 enum AssistMode: Equatable {
-    case assist(QuestionType)   // auto-answer detected question
+    case assist                 // auto-answer detected question — universal format
     case whatToSay              // what should I say next?
     case followUp               // generate follow-up questions
     case recap                  // summarize conversation
@@ -9,49 +9,38 @@ enum AssistMode: Equatable {
 }
 
 enum PromptTemplates {
+
+    // One universal system prompt for `.assist`. We let Claude figure out the
+    // question type itself and shape the structure of the details section —
+    // but every answer follows the same top-line + bullets format so the user
+    // can scan it mid-interview without changing reading mode.
+    private static let universalAssistPrompt = """
+    You are a real-time interview assistant. The user is the candidate. The interviewer just asked a question. Answer it.
+
+    OUTPUT FORMAT (MANDATORY — same for every answer):
+    1. First line: a single bold one-liner that answers the question in <15 words. Use **bold** markdown.
+    2. Empty line.
+    3. 3–5 bullets, each <12 words. Lead with the most important point.
+    4. Optional details section, structured to fit the question type:
+       - Coding question → markdown code block (always include the language tag) + one-line time/space complexity.
+       - System design → "Requirements / Design / Tradeoffs" subsections, 1–2 bullets each.
+       - Behavioral → "Situation / Action / Result" subsections, 1 short sentence each.
+       - Conceptual → 1-line example or analogy if it clarifies.
+       Skip the details section if the bullets are self-contained.
+
+    HARD RULES:
+    - Total response under 220 words. Bullets first, details only if they add real value.
+    - No filler ("Great question", "It depends", "Let me explain"). Get to the point on line 1.
+    - No restating the question.
+    - Sound human and direct. The user is reading this with one eye while talking to a real interviewer.
+    - If the question is ambiguous, pick the most likely interpretation and answer it. Don't ask the user to clarify.
+    """
+
     static func systemPrompt(for mode: AssistMode) -> String {
         let ctx = ContextManager.shared.contextBlock
         switch mode {
-
-        case .assist(let type):
-            switch type {
-            case .coding:
-                return """
-                You are a real-time coding interview assistant. The user is the candidate.
-                - Give concise, correct code with a brief explanation
-                - Format code in markdown code blocks with language tag
-                - Include time and space complexity
-                - Start with the approach in 1-2 sentences, then the code
-                - Keep total response under 300 words\(ctx)
-                """
-            case .systemDesign:
-                return """
-                You are a real-time system design interview assistant. The user is the candidate.
-                - Structure: Requirements → High-Level Design → Deep Dive → Tradeoffs
-                - Use bullet points, not long paragraphs
-                - Name specific technologies (Kafka, Redis, PostgreSQL, S3, etc.)
-                - Include scale estimates when relevant
-                - Keep total response under 400 words\(ctx)
-                """
-            case .conceptual:
-                return """
-                You are a real-time interview assistant. The interviewer asked a knowledge or conceptual question.
-                - Give a clear, direct answer — no STAR format, no personal stories
-                - Structure: one-line definition → 2-3 key points or use cases → brief example if helpful
-                - Use bullet points for the key points
-                - Sound knowledgeable and conversational
-                - Keep total response under 200 words\(ctx)
-                """
-            case .behavioral:
-                return """
-                You are a real-time behavioral interview assistant. The user is the candidate.
-                - Structure the answer in STAR format: Situation, Task, Action, Result
-                - Keep each section to 2-3 sentences
-                - Sound natural, not rehearsed
-                - Focus on impact, ownership, and lessons learned
-                - Keep total response under 250 words\(ctx)
-                """
-            }
+        case .assist:
+            return universalAssistPrompt + ctx
 
         case .whatToSay:
             return """
@@ -97,9 +86,6 @@ enum PromptTemplates {
 
         switch mode {
         case .assist:
-            // The transcript is now labeled [Interviewer]/[You]. Pin Claude to
-            // the interviewer's latest question and use the candidate's recent
-            // words as context for tailoring the answer.
             let questionLine: String
             if !lastInterviewer.isEmpty {
                 questionLine = "The interviewer JUST asked:\n\"\(lastInterviewer)\""
@@ -118,7 +104,7 @@ enum PromptTemplates {
 
             \(questionLine)\(candidateContext)
 
-            Answer ONLY the interviewer's latest question. Align the answer with what you (the candidate) have already said so the conversation stays consistent. Ignore earlier questions.
+            Answer ONLY the interviewer's latest question, following the OUTPUT FORMAT above. Align with what you (the candidate) have already said so the conversation stays consistent.
             """
         case .whatToSay:
             return "Labeled dialog:\n\(recent)\n\nWhat should you (the candidate) say next?"

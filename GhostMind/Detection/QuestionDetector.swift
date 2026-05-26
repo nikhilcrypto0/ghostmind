@@ -1,27 +1,4 @@
 import Foundation
-import SwiftUI
-
-enum QuestionType {
-    case coding, systemDesign, conceptual, behavioral
-
-    var label: String {
-        switch self {
-        case .coding:       return "Coding"
-        case .systemDesign: return "System Design"
-        case .conceptual:   return "Conceptual"
-        case .behavioral:   return "Behavioral"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .coding:       return .blue
-        case .systemDesign: return .orange
-        case .conceptual:   return .teal
-        case .behavioral:   return .green
-        }
-    }
-}
 
 class QuestionDetector {
     static let shared = QuestionDetector()
@@ -32,74 +9,32 @@ class QuestionDetector {
     private var lastFireTime = Date.distantPast
     private var lastTranscriptLength = 0
 
-    private let codingSignals = [
-        "implement", "write a function", "write code", "algorithm", "complexity",
-        "binary", "tree", "graph", "array", "string", "dynamic programming",
-        "recursion", "iteration", "sort", "search", "hash", "linked list",
-        "stack", "queue", "heap", "trie", "backtracking", "leetcode",
-        "big o", "time complexity", "space complexity", "optimize", "brute force"
-    ]
-
-    private let designSignals = [
-        "design a system", "design the", "scale", "architecture", "microservice",
-        "load balancer", "cdn", "distributed", "consistency", "availability",
-        "throughput", "latency", "sharding", "replication", "message queue",
-        "rate limiting", "event driven", "service mesh", "data pipeline"
-    ]
-
-    private let conceptualSignals = [
-        "what is", "what are", "what does", "what do you mean",
-        "what's the difference", "difference between", "compare",
-        "explain", "define", "definition of",
-        "how does", "how do", "how would you describe",
-        "what happens when", "why do we", "why is", "why are",
-        "what is the purpose", "what is the benefit", "what is the advantage",
-        "when should", "when would you use", "when do you",
-        "what problem does", "what problem do", "what is meant by",
-        "describe what", "tell me what", "tell me how"
-    ]
-
+    // Question signals — anything resembling a request, prompt, or interrogative.
+    // We no longer classify into coding/system-design/conceptual/behavioral; Claude
+    // figures out the type itself and shapes the answer accordingly.
     private let questionSignals = [
         "how would you", "how do you", "how do we", "how can you", "how can we",
-        "how does", "how would", "how should",
-        "can you", "could you", "would you",
-        "implement a", "implement the", "design a", "design the",
+        "how does", "how would", "how should", "how is", "how are",
+        "can you", "could you", "would you", "should i",
+        "implement a", "implement the", "design a", "design the", "build a", "build the",
         "write a", "write the", "given a", "find the", "return the",
-        "walk me through", "tell me about", "tell me how",
+        "walk me through", "tell me about", "tell me how", "tell me what",
         "what's your approach", "what is your approach",
-        "explain how", "explain what", "explain the",
+        "explain how", "explain what", "explain the", "explain this",
         "what would you do", "what is a", "what is an", "what are",
+        "what is", "what does", "what do you", "what's the",
         "describe how", "describe the", "describe a",
         "help me", "show me", "give me an example",
-        "what do you know about", "can you explain",
-        "what is the", "how does", "why do", "why is", "what happens"
+        "why do", "why is", "why are", "why would", "why does",
+        "when should", "when would", "when do",
+        "compare", "difference between"
     ]
 
-    func analyze(transcript: String) -> (isQuestion: Bool, type: QuestionType)? {
+    // Returns true if the text looks like an interviewer prompt that warrants an answer.
+    func isQuestion(_ transcript: String) -> Bool {
         let lower = transcript.lowercased()
-        let endsWithQuestion = lower.hasSuffix("?") || lower.hasSuffix("? ")
-        let hasQuestionSignal = questionSignals.contains { lower.contains($0) }
-
-        guard endsWithQuestion || hasQuestionSignal else { return nil }
-        return (true, classify(lower))
-    }
-
-    private func classify(_ text: String) -> QuestionType {
-        let codingScore = codingSignals.filter { text.contains($0) }.count
-        let designScore = designSignals.filter { text.contains($0) }.count
-        let conceptualScore = conceptualSignals.filter { text.contains($0) }.count
-
-        // Strong technical signal wins
-        if codingScore >= 2 { return .coding }
-        if designScore >= 2 { return .systemDesign }
-        if codingScore > 0 && codingScore > designScore { return .coding }
-        if designScore > 0 && designScore > codingScore { return .systemDesign }
-
-        // Knowledge/definition questions (e.g. "What are AI agents?")
-        if conceptualScore >= 1 { return .conceptual }
-
-        // Story-based behavioral (tell me about a time, describe a situation)
-        return .behavioral
+        if lower.hasSuffix("?") || lower.hasSuffix("? ") { return true }
+        return questionSignals.contains { lower.contains($0) }
     }
 
     private func canFire() -> Bool {
@@ -110,13 +45,13 @@ class QuestionDetector {
     // No cooldown here: a finalized utterance is a discrete event from the speech recognizer,
     // and the user expects every new question to refresh the answer.
     func fireIfQuestion(transcript: String, latestUtterance: String, handler: @escaping (String, AssistMode) -> Void) {
-        guard let result = analyze(transcript: latestUtterance) else {
+        guard isQuestion(latestUtterance) else {
             GhostLog.write("QuestionDetector: no question pattern in latest: \"\(latestUtterance.suffix(60))\"")
             return
         }
         lastFireTime = Date()
-        GhostLog.write("QuestionDetector: FIRED (commit) — type=\(result.type), q=\"\(latestUtterance.suffix(80))\"")
-        handler(transcript, .assist(result.type))
+        GhostLog.write("QuestionDetector: FIRED (commit) — q=\"\(latestUtterance.suffix(80))\"")
+        handler(transcript, .assist)
     }
 
     // Called on every partial — fires after silence threshold
@@ -131,10 +66,10 @@ class QuestionDetector {
             guard self.canFire() else { return }
 
             GhostLog.write("QuestionDetector: analyzing partial (\(transcript.count) chars): \"\(transcript.suffix(60))\"")
-            if let result = self.analyze(transcript: transcript) {
+            if self.isQuestion(transcript) {
                 self.lastFireTime = Date()
-                GhostLog.write("QuestionDetector: FIRED (partial) — type=\(result.type)")
-                DispatchQueue.main.async { onDetected(transcript, .assist(result.type)) }
+                GhostLog.write("QuestionDetector: FIRED (partial)")
+                DispatchQueue.main.async { onDetected(transcript, .assist) }
             } else {
                 GhostLog.write("QuestionDetector: no question detected")
             }
