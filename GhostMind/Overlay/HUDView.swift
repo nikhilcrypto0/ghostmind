@@ -64,8 +64,6 @@ class HUDViewModel {
 
 struct HUDView: View {
     @State var viewModel: HUDViewModel
-    @State private var inputText: String = ""
-    @FocusState private var inputFocused: Bool
 
     var body: some View {
         ZStack {
@@ -82,95 +80,60 @@ struct HUDView: View {
                 responseArea
                 Divider().background(Color.white.opacity(0.08))
                 actionButtons
-                Divider().background(Color.white.opacity(0.06))
-                inputBar
             }
         }
         .frame(width: AppConfig.hudWidth)
         .shadow(color: .black.opacity(0.5), radius: 24, x: 0, y: 8)
     }
 
-    // MARK: — Top bar
+    // MARK: — Top bar (minimal: status dot · mic toggle · close)
 
     private var topBar: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                if viewModel.micStatus.isPulsing {
-                    Circle()
-                        .fill(viewModel.micStatus.color.opacity(0.25))
-                        .frame(width: 14, height: 14)
-                        .scaleEffect(1.3)
-                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true),
-                                   value: viewModel.micStatus.isPulsing)
-                }
-                Circle()
-                    .fill(viewModel.micStatus.color)
-                    .frame(width: 7, height: 7)
-            }
-
-            Text(viewModel.micStatus.label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(viewModel.micStatus.color)
-
-            if viewModel.audioLevel > 0.01 && viewModel.micStatus == .listening {
-                audioLevelBars
-            }
-
+        HStack(spacing: 10) {
+            statusDot
             Spacer()
-
-            Button(action: { SettingsWindowController.shared.show() }) {
-                Image(systemName: "person.crop.rectangle")
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-            .help("Job & Resume Context")
-
-            Button(action: { NotificationCenter.default.post(name: .toggleOverlay, object: nil) }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
-                    Text("Hide")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .foregroundColor(.white.opacity(0.6))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.white.opacity(0.08))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Hide (⌘⇧Space)")
-
-            Button(action: { NotificationCenter.default.post(name: .toggleMic, object: nil) }) {
-                Image(systemName: viewModel.micStatus == .muted ? "mic.slash.fill" : "mic.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(viewModel.micStatus == .muted ? .red : .white.opacity(0.5))
-            }
-            .buttonStyle(.plain)
-
-            Button(action: { viewModel.clear() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.4))
-            }
-            .buttonStyle(.plain)
+            micButton
+            clearButton
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
     }
 
-    private var audioLevelBars: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.green.opacity(Double(viewModel.audioLevel) * 5 > Double(i) ? 0.8 : 0.2))
-                    .frame(width: 3, height: CGFloat(5 + i * 2))
+    private var statusDot: some View {
+        ZStack {
+            if viewModel.micStatus.isPulsing {
+                Circle()
+                    .fill(viewModel.micStatus.color.opacity(0.25))
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(1.3)
+                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+                               value: viewModel.micStatus.isPulsing)
             }
+            Circle()
+                .fill(viewModel.micStatus.color)
+                .frame(width: 7, height: 7)
         }
-        .animation(.easeOut(duration: 0.08), value: viewModel.audioLevel)
+        .help(viewModel.micStatus.label)
+    }
+
+    private var micButton: some View {
+        Button(action: { NotificationCenter.default.post(name: .toggleMic, object: nil) }) {
+            Image(systemName: viewModel.micStatus == .muted ? "mic.slash.fill" : "mic.fill")
+                .font(.system(size: 12))
+                .foregroundColor(viewModel.micStatus == .muted ? .red : .white.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+        .help("Mute mic (⌘⇧M)")
+    }
+
+    private var clearButton: some View {
+        Button(action: { viewModel.clear() }) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.4))
+        }
+        .buttonStyle(.plain)
+        .help("Clear (⌘⇧X)")
     }
 
     // MARK: — Response area
@@ -293,46 +256,6 @@ struct HUDView: View {
         AgentRouter.shared.handle(transcript: transcript, mode: mode)
     }
 
-    // MARK: — Input bar
-
-    private var inputBar: some View {
-        HStack(spacing: 10) {
-            ZStack(alignment: .leading) {
-                if inputText.isEmpty {
-                    Text("Ask a question, or ⌘⇧C for Assist")
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.25))
-                        .allowsHitTesting(false)
-                }
-                TextField("", text: $inputText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.85))
-                    .focused($inputFocused)
-                    .onSubmit { sendCustom() }
-            }
-
-            Button(action: sendCustom) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(inputText.isEmpty ? .white.opacity(0.2) : Color(red: 0.35, green: 0.4, blue: 1.0))
-            }
-            .buttonStyle(.plain)
-            .disabled(inputText.isEmpty)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private func sendCustom() {
-        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        inputText = ""
-        let transcript = TranscriptionManager.shared.currentTranscript()
-        viewModel.activeMode = "Custom"
-        viewModel.startNewAnswer()
-        AgentRouter.shared.handle(transcript: transcript.isEmpty ? text : transcript, mode: .custom(text))
-    }
 }
 
 

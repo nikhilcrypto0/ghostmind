@@ -8,6 +8,7 @@ class TranscriptionManager: NSObject {
     private(set) var isReady = false
     private var rollingTranscript = ""
     private var currentSegment = ""
+    private(set) var lastUtterance = ""
     private let maxTranscriptLength = AppConfig.maxTranscriptLength
     private let queue = DispatchQueue(label: "com.ghostmind.transcription", qos: .userInitiated)
 
@@ -233,10 +234,11 @@ class TranscriptionManager: NSObject {
                 .trimmingCharacters(in: .whitespaces)
                 .suffix(self.maxTranscriptLength))
             self.currentSegment = ""
+            self.lastUtterance = text
             let full = self.rollingTranscript
             NotificationCenter.default.post(name: .transcriptUpdate, object: nil, userInfo: ["text": text])
             guard !full.isEmpty else { return }
-            QuestionDetector.shared.fireIfQuestion(transcript: full) { transcript, mode in
+            QuestionDetector.shared.fireIfQuestion(transcript: full, latestUtterance: text) { transcript, mode in
                 AgentRouter.shared.handle(transcript: transcript, mode: mode)
             }
         }

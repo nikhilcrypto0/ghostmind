@@ -92,9 +92,20 @@ enum PromptTemplates {
 
     static func userPrompt(transcript: String, mode: AssistMode) -> String {
         let recent = String(transcript.suffix(2000))
+        let latest = TranscriptionManager.shared.lastUtterance
         switch mode {
         case .assist:
-            return "Conversation transcript:\n\"\(recent)\"\n\nAnswer the question in the transcript."
+            // Pin Claude to the most recent utterance — without this it tends to
+            // re-answer earlier questions still sitting in the transcript buffer.
+            return """
+            Conversation transcript (context only):
+            \"\(recent)\"
+
+            The interviewer JUST asked:
+            \"\(latest.isEmpty ? recent.suffix(300).description : latest)\"
+
+            Answer ONLY this latest question. Ignore earlier questions in the transcript.
+            """
         case .whatToSay:
             return "Conversation transcript:\n\"\(recent)\"\n\nWhat should I say next?"
         case .followUp:

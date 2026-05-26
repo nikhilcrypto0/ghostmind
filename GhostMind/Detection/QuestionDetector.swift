@@ -106,15 +106,16 @@ class QuestionDetector {
         Date().timeIntervalSince(lastFireTime) >= cooldownInterval
     }
 
-    // Called after each committed segment — fires immediately if transcript is a question
-    func fireIfQuestion(transcript: String, handler: @escaping (String, AssistMode) -> Void) {
-        guard canFire() else { return }
-        guard let result = analyze(transcript: transcript) else {
-            GhostLog.write("QuestionDetector: no question pattern in \"\(transcript.suffix(60))\"")
+    // Called after each committed segment — fires immediately if the committed text is a question.
+    // No cooldown here: a finalized utterance is a discrete event from the speech recognizer,
+    // and the user expects every new question to refresh the answer.
+    func fireIfQuestion(transcript: String, latestUtterance: String, handler: @escaping (String, AssistMode) -> Void) {
+        guard let result = analyze(transcript: latestUtterance) else {
+            GhostLog.write("QuestionDetector: no question pattern in latest: \"\(latestUtterance.suffix(60))\"")
             return
         }
         lastFireTime = Date()
-        GhostLog.write("QuestionDetector: FIRED (commit) — type=\(result.type)")
+        GhostLog.write("QuestionDetector: FIRED (commit) — type=\(result.type), q=\"\(latestUtterance.suffix(80))\"")
         handler(transcript, .assist(result.type))
     }
 
