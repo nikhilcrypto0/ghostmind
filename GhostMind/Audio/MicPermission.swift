@@ -8,6 +8,9 @@ enum MicPermission {
             completion(true)
 
         case .notDetermined:
+            // Menu-bar (LSUIElement) apps can have TCC prompts appear behind
+            // other windows. Forcing activation surfaces the prompt reliably.
+            NSApp.activate(ignoringOtherApps: true)
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
                     GhostLog.write("Microphone permission \(granted ? "GRANTED" : "DENIED") by user prompt")

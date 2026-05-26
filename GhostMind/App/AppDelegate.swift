@@ -60,7 +60,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard n.userInfo?["error"] == nil else { return }
             guard ContextManager.shared.captureSystemAudio else { return }
             GhostLog.write("Auto-starting system audio capture for interviewer voice")
-            SystemAudioCapture.shared.start()
+            ScreenRecordingPermission.authorize { granted in
+                guard granted else { return }
+                SystemAudioCapture.shared.start()
+            }
         }
     }
 
